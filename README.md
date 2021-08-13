@@ -1,5 +1,5 @@
 # CobaltSpam
-Tool based on CobaltStrikeParser (https://github.com/Sentinel-One/CobaltStrikeParser) from SentinelOne which can be used to spam a CobaltStrike server with fake beacons
+Tool based on [CobaltStrikeParser](https://github.com/Sentinel-One/CobaltStrikeParser) from SentinelOne which can be used to spam a CobaltStrike server with fake beacons
 
 ![alt text](https://github.com/hariomenkel/CobaltSpam/blob/master/CS.PNG?raw=true)
 
@@ -18,4 +18,4 @@ optional arguments:
 ```
 
 ## Note
-You might want to use a tool like https://github.com/GitHackTools/TorghostNG on your VM to hide your real IP
+You might want to use a tool like [TorghostNG](https://github.com/GitHackTools/TorghostNG) on your VM to hide your real IP or use [Whonix](https://www.whonix.org/)
