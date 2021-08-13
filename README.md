@@ -19,3 +19,6 @@ optional arguments:
 
 ## Note
 You might want to use a tool like [TorghostNG](https://github.com/GitHackTools/TorghostNG) on your VM to hide your real IP or use [Whonix](https://www.whonix.org/)
+
+## Disclaimer
+While this should be clear, this tool should be used only against infrastructure you own. Don't mess with systems you don't own! 
