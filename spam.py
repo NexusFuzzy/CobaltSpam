@@ -16,6 +16,7 @@ import hmac
 import urllib
 import socket
 from comm import *
+import re
 
 HASH_ALGO = hashlib.sha256
 SIG_SIZE = HASH_ALGO().digest_size
@@ -75,24 +76,25 @@ def register_beacon(conf):
         conf (dict): Beacon configuration dict, from cobaltstrikeConfig parser
     """
     # Register new random beacon
-    proto = ""
-    if conf['BeaconType'][0] == 'HTTP':
-        proto = "http://"
-    elif conf['BeaconType'][0] == 'HTTPS':
-        proto = "https://"
+    if conf['BeaconType'][0] == 'HTTP' or conf['BeaconType'][0] == 'HTTPS':
+        pass
     else:
         print("BeaconType " + str(conf['BeaconType']) + " not yet supported! Quitting.")
         return
 
-    urljoin(proto +conf['C2Server'].split(',')[0], conf['C2Server'].split(',')[1])
     aes_source = os.urandom(16)
     m = Metadata(conf['PublicKey'], aes_source)
     t = Transform(conf['HttpGet_Metadata'])
 
     body, headers, params = t.encode(m.pack().decode('latin-1'), '', str(m.bid))
-    print('[+] Registering new random beacon: comp=%s user=%s url=%s' % (m.comp, m.user, conf['C2Server']))
+
+    if ( 'HostHeader' in conf):
+        domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
+        if domain :
+            headers['Host'] = domain.group(1).strip()
+    print('[+] Registering new random beacon: comp=%s user=%s url=%s' % (m.comp, m.user, urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1])))
     try:
-        req = requests.request('GET', urljoin(proto + conf['C2Server'].split(',')[0], conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
+        req = requests.request('GET', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
     except Exception as e:
         print('[-] Got exception from server: %s' % e)
         return
@@ -117,16 +119,20 @@ def register_beacon(conf):
     t = Transform(conf['HttpPost_Metadata'])
     body, headers, params = t.encode(m.pack().decode('latin-1'), enc_data.decode('latin-1'), str(m.bid))
 
+    if ( 'HostHeader' in conf):
+        domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
+        if domain :
+            headers['Host'] = domain.group(1).strip()
+
     global sent_beacons
     print('[' + str(sent_beacons) + '] Sending task data')
-    
+
     try:
-        req = requests.request('POST', urljoin(proto + conf['C2Server'].split(',')[0], conf['HttpPostUri'].split(',')[0]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
+        req = requests.request('POST', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['HttpPostUri'].split(',')[0]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
         print('[Response code: ' + str(req.status_code) + ']')
-        print(req.text)
         sent_beacons = sent_beacons + 1
     except Exception as e:
-        print('[-] Got excpetion from server while sending task: %s' % e)
+        print('[-] Got exception from server while sending task: %s' % e)
 
 
 
