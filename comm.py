@@ -23,7 +23,7 @@ class Metadata(object):
     Class to represent a beacon's metadata.
     This is specific to Cobalt 4 and up
     """
-    def __init__(self, public_key, aes_source_bytes):
+    def __init__(self, public_key, aes_source_bytes, spawn_to):
         """
         Generates a random beacon entry
         Args:
@@ -50,6 +50,7 @@ class Metadata(object):
         d = hashlib.sha256(aes_source_bytes).digest()        
         self.aes_key = d[0:16]
         self.hmac_key = d[16:]
+        self.spawn_to = spawn_to.split('\\')[-1]
     
     def rsa_encrypt(self, data):
         """Encrypt given data the way Cobalt's server likes
@@ -72,7 +73,7 @@ class Metadata(object):
         data = self.aes_source_bytes + struct.pack('>hhIIHBH', self.charset, self.charset, self.bid, self.pid, self.port, self.is64, self.ver) + self.junk
         data += struct.pack('4s', self.ip)
         data += b'\x00' * (51 - len(data))
-        data += '\t'.join([self.comp, self.user]).encode()
+        data += '\t'.join([self.comp, self.user, self.spawn_to]).encode()
         return self.rsa_encrypt(data)
 
 

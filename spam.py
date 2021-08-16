@@ -83,7 +83,7 @@ def register_beacon(conf):
         return
 
     aes_source = os.urandom(16)
-    m = Metadata(conf['PublicKey'], aes_source)
+    m = Metadata(conf['PublicKey'], aes_source, str(conf['Spawnto_x64']))
     t = Transform(conf['HttpGet_Metadata'])
 
     body, headers, params = t.encode(m.pack().decode('latin-1'), '', str(m.bid))
