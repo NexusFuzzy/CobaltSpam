@@ -35,7 +35,9 @@ class Metadata(object):
         self.ciphertext = ""
         self.charset = 20273
         self.ver = random.randint(1,10)
-        self.ip = os.urandom(4)
+        self.ip = bytes(map(int, spam_utils.create_fake_private_ip().split('.')))
+        # Swap endianess
+        self.ip = self.ip[::-1]
         self.comp = spam_utils.create_hostname()
         self.user = spam_utils.create_username()
         self.pid = random.randint(1,50000) * 4 - 2  # ;)
@@ -244,4 +246,10 @@ class Transform(object):
             else:
                 sessionId = func_dict_decode[action](arg, sessionId)
 
-        return metadata, output, sessionId        
+        return metadata, output, sessionId
+
+
+
+
+
+        
