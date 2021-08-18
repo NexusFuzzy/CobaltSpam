@@ -43,7 +43,7 @@ Restart your tor service:
 <BR>
 `$ sudo service tor restart`
 <BR>
-Finally add your hash-password to spam_utils.py as "tor_password"
+Finally add your hash-password (In this example MyStr0n9P#D) to spam_utils.py as "tor_password"
 
 ## Disclaimer
 While this should be clear, this tool should be used only against infrastructure you own. Don't mess with systems you don't own! 
