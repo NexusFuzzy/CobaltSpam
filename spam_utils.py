@@ -2,9 +2,82 @@ import random
 import string
 from ipaddress import IPv4Address
 from random import getrandbits
+import requests
+import socks
+import socket
+from stem import Signal
+from stem.control import Controller
 
 fileFirstnames = "first-names.txt"
 fileLastnames = "last-names.txt"
+tor_password = "MyStr0n9P#D"
+
+def get_current_ip():
+    session = requests.session()
+    session.proxies = {}
+    session.proxies['http']='socks5h://localhost:9050'
+
+    try:
+        r = session.get('http://ipinfo.io/ip')
+    except Exception as e:
+        print("Error while getting IP: " + str(e))
+    else:
+        return r.text
+
+
+# Please check README to make this work!
+def renew_tor_ip():
+    with Controller.from_port(port=9051) as controller:
+        controller.authenticate(password=tor_password)
+        controller.signal(Signal.NEWNYM)
+
+
+def test_tor():
+    try:
+        tor_c = socket.create_connection(('127.0.0.1', 9051))
+        payload = 'AUTHENTICATE "{}"\r\nGETINFO status/circuit-established\r\nQUIT\r\n'.format(tor_password)
+        tor_c.send(payload.encode())
+
+        response = tor_c.recv(1024)
+        tor_c.close()
+        if 'circuit-established=1' not in str(response):
+            return False
+        else:
+            return True
+
+    except Exception as e:
+        print("Could not connect to Tor: " + str(e))
+        print("Please make sure Tor is installed!")
+        return False
+
+
+def get_tor_session():
+    session = requests.session()
+    # Tor uses the 9050 port as the default socks port
+    session.proxies = {'http':  'socks5h://127.0.0.1:9050',
+                       'https': 'socks5h://127.0.0.1:9050'}
+    return session
+
+
+def create_fake_private_ip():
+    ip = ""
+    class_net = random.randint(0,2)
+
+    if class_net == 0:
+        ip = "10."
+        ip += ".".join(map(str, (random.randint(0, 255) 
+        for _ in range(3))))
+    elif class_net == 1:
+        ip = "172."
+        ip = ip + str(random.randint(16,35)) + "."
+        ip += ".".join(map(str, (random.randint(0, 255) 
+        for _ in range(2))))
+    elif class_net == 2: 
+        ip = "192.168."
+        ip += ".".join(map(str, (random.randint(0, 255) 
+        for _ in range(2))))
+    return(ip)
+
 
 def create_hostname():
     prefixes = ['WIN-', 'Dev-', 'SRV', '', 'PC', 'PC-', 'SRV_', 'SRVWIN-']
