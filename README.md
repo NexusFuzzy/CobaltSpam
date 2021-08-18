@@ -39,6 +39,7 @@ Add this value to `/etc/torrc` (Path may vary depending on our distribution) for
 <BR>
 Afterwards uncomment the line<BR>
 `ControlPort 9051`<BR>
+Restart your tor service:
 <BR>
 `$ sudo service tor restart`
 <BR>
