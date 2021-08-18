@@ -14,6 +14,7 @@ optional arguments:
   -h, --help            show this help message and exit
   -u URL, --url URL
   -f FILE, --file FILE
+  --use_tor             (Optional, uses Tor to send beacons - please see Prerequisites!)
 
 ```
 
