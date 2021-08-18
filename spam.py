@@ -135,15 +135,7 @@ def register_beacon(conf):
         print('[-] Got exception from server while sending task: %s' % e)
 
 
-
-if __name__ == '__main__':
-    '''
-    parser = argparse.ArgumentParser(description="Parse CobaltStrike Beacon's configuration from C2 url and registers a beacon with it")
-    #parser.add_argument('source', choices=('url', 'file'))
-    parser.add_argument("url", help="Cobalt C2 server (e.g. http://1.1.1.1)", required=False)
-    parser.add_argument("file", help="Text file with list of Cobalt C2 servers - One server per line")
-    args = parser.parse_args()
-    '''
+if __name__ == '__main__':   
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-u", "--url")
@@ -175,7 +167,7 @@ if __name__ == '__main__':
             reader = f.readlines()
             for line in reader:
                 if line[0] != '#':
-                    print("[*] Now testing " + line)
+                    print("[*] Now testing " + line.replace("\n",""))
                     x86_beacon_conf = get_beacon_data(line, 'x86')
                     x64_beacon_conf = get_beacon_data(line, 'x64')
                     if not x86_beacon_conf and not x64_beacon_conf:
