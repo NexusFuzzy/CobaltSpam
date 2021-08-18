@@ -50,7 +50,7 @@ class Metadata(object):
         d = hashlib.sha256(aes_source_bytes).digest()        
         self.aes_key = d[0:16]
         self.hmac_key = d[16:]
-        self.spawn_to = spawn_to.split('\\')[-1]
+        self.spawn_to = spawn_to.split('\\')[-1].split(" ")[0]
     
     def rsa_encrypt(self, data):
         """Encrypt given data the way Cobalt's server likes
