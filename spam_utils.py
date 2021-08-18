@@ -8,7 +8,7 @@ fileLastnames = "last-names.txt"
 
 def create_hostname():
     prefixes = ['WIN-', 'Dev-', 'SRV', '', 'PC', 'PC-', 'SRV_', 'SRVWIN-']
-    rand_prefix = random.randint(0,3)
+    rand_prefix = random.randint(0, len(prefixes) - 1)
 
     min_length = 4
     max_length = 12
