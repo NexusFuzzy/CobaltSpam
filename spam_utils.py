@@ -6,29 +6,9 @@ from random import getrandbits
 fileFirstnames = "first-names.txt"
 fileLastnames = "last-names.txt"
 
-def create_fake_private_ip():
-    ip = ""
-    class_net = random.randint(0,2)
-
-    if class_net == 0:
-        ip = "10."
-        ip += ".".join(map(str, (random.randint(0, 255) 
-        for _ in range(3))))
-    elif class_net == 1:
-        ip = "172."
-        ip = ip + str(random.randint(16,35)) + "."
-        ip += ".".join(map(str, (random.randint(0, 255) 
-        for _ in range(2))))
-    elif class_net == 2: 
-        ip = "192.168."
-        ip += ".".join(map(str, (random.randint(0, 255) 
-        for _ in range(2))))
-    return(ip)
-
-
 def create_hostname():
     prefixes = ['WIN-', 'Dev-', 'SRV', '', 'PC', 'PC-', 'SRV_', 'SRVWIN-']
-    rand_prefix = random.randint(0, len(prefixes) - 1)
+    rand_prefix = random.randint(0,3)
 
     min_length = 4
     max_length = 12
