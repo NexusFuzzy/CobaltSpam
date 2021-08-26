@@ -12,9 +12,10 @@ usage: spam.py [-h] [-u URL | -f FILE]
 
 optional arguments:
   -h, --help            show this help message and exit
-  -u URL, --url URL
-  -f FILE, --file FILE
+  -u URL, --url URL     Target a single URL
+  -f FILE, --file FILE  Target a list of domains from a text file (One target per line)
   --use_tor             (Optional, uses Tor to send beacons - please see Prerequisites!)
+  --print_config        (Optional, prints beacon config)
 
 ```
 
