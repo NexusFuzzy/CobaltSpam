@@ -24,6 +24,8 @@ import time
 from datetime import datetime
 from threading import Timer
 import sys
+import urllib3
+import json
 
 HASH_ALGO = hashlib.sha256
 SIG_SIZE = HASH_ALGO().digest_size
@@ -34,7 +36,7 @@ URL_PATHS = {'x86':'ab2g', 'x64':'ab2h'}
 max_threads = 40 # Number of threads for spamming
 tor_session = None
 tor_ip_renew_interval = max_threads * 3  # Renew IP after every X beacons sent
-
+threatfox_api_key = "" # Please add your own API key for threatfox.abuse.ch here
 
 class ColorPrint:
 
@@ -74,6 +76,69 @@ class FastWriteCounter(object):
             self._number_of_read += 1
         return value
 
+
+def query_ThreatFox(beacon_download_url, conf):
+    if threatfox_api_key == "":
+        ColorPrint.print_warn("No API key for ThreatFox defined in spam.py! Please add one to interact with ThreatFox!")
+        return
+
+    if conf['BeaconType'][0] == 'HTTP' or conf['BeaconType'][0] == 'HTTPS':
+        pass
+    else:
+        print("BeaconType " + str(conf['BeaconType']) + " will not be submitted to ThreatFox.")
+        return
+
+    url = ""
+
+    aes_source = os.urandom(16)
+    m = Metadata(conf['PublicKey'], aes_source, str(conf['Spawnto_x64']))
+    t = Transform(conf['HttpGet_Metadata'])
+
+    body, headers, params = t.encode(m.pack().decode('latin-1'), '', str(m.bid))
+
+    if ( 'HostHeader' in conf):
+        domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
+        if domain :
+            headers['Host'] = domain.group(1).strip()
+            url = urljoin(conf['BeaconType'][0].lower() + '://' +  domain.group(1).strip() + ':' + str(conf['Port']), conf['C2Server'].split(',')[1])
+        else:
+            url = urljoin(conf['BeaconType'][0].lower() + '://' + conf['C2Server'].split(',')[0] + ':' + str(conf['Port']), conf['C2Server'].split(',')[1])
+
+    comment = "[ Download URL of Beacon ]\n"
+    comment += beacon_download_url + "\n"
+    comment += "[ Extracted Beacon Config ]\n"
+
+    for key in conf:
+        comment += key + ": " + str(conf[key]) + "\n"
+
+    try:
+        r = requests.post('https://threatfox-api.abuse.ch/api/v1/', json = {'query':'search_ioc', 'search_term':url}).json()
+        if r['query_status'] == "no_result":
+            ColorPrint.print_pass("Good news! IOC '" + url + "' was not known to ThreatFox! Will post to ThreatFox ...")
+            # IOC is not known and we can submit it
+            headers = { "API-KEY": threatfox_api_key,}
+            pool = urllib3.HTTPSConnectionPool('threatfox-api.abuse.ch', port=443, maxsize=50, headers=headers, cert_reqs='CERT_NONE', assert_hostname=True)
+    
+            data = {
+                    'query':            'submit_ioc',
+                    'threat_type':      'botnet_cc',
+                    'ioc_type':         'url',
+                    'malware':          'win.cobalt_strike',
+                    'confidence_level': '100',
+                    'reference':        '',
+                    'comment':          comment,
+                    'anonymous':        0,
+                    'tags': [ 'CobaltStrike'],
+                    'iocs': [ url ]
+            }
+
+            json_data = json.dumps(data)
+            response = pool.request("POST", "/api/v1/", body=json_data)
+            response = response.data.decode("utf-8", "ignore")
+        else:
+            ColorPrint.print_warn("IOC '" + url + "' was already known in ThreatFox and will not be posted!")
+    except Exception as e:
+        ColorPrint.print_fail("Error while contacting ThreatFox: " + str(e))
 
 def exitfunc():
     # For benchmarking purposes
@@ -210,6 +275,8 @@ if __name__ == '__main__':
     group.add_argument("-f", "--file", help="Read targets from text file - One CS server per line")
     parser.add_argument("--print_config", help="Print the beacon config", default=False, type=lambda x: (str(x).lower() == 'true'))
     parser.add_argument("--use_tor", help="Should tor be used to connect to target?", default=False, type=lambda x: (str(x).lower() == 'true'))
+    parser.add_argument("--publish_to_threatfox", help="Publish your findings to ThreatFox", default=False, type=lambda x: (str(x).lower() == 'true'))
+    parser.add_argument("--parse_only", help="Only download beacon and parse it without spamming", default=False, type=lambda x: (str(x).lower() == 'true'))
     args = parser.parse_args()
 
     if args.use_tor:
@@ -232,16 +299,20 @@ if __name__ == '__main__':
         conf = x86_beacon_conf or x64_beacon_conf
         confs.append(conf)
         if args.print_config:
-            ColorPrint.print_info("[*] Beacon config for " + line.replace("\n","") + ":")
+            ColorPrint.print_info("[*] Beacon config for " + args.url + ":")
             print_config(conf)
+
+        if args.publish_to_threatfox:
+            query_ThreatFox(args.url , conf)
 
         cnt = FastWriteCounter()
         threads = []
-        for i in range(max_threads):
-            ColorPrint.print_info("Spawning new thread")
-            t = threading.Thread(target=spam, args=(confs,cnt))
-            threads.append(t)
-            t.start()
+        if not args.parse_only:
+            for i in range(max_threads):
+                ColorPrint.print_info("Spawning new thread")
+                t = threading.Thread(target=spam, args=(confs,cnt))
+                threads.append(t)
+                t.start()
 
     if args.file:
         confs = []
@@ -268,13 +339,18 @@ if __name__ == '__main__':
                             ColorPrint.print_info("[*] Beacon config for " + line.replace("\n","") + ":")
                             print_config(conf)
 
+                        if args.publish_to_threatfox:
+                            query_ThreatFox(line.replace("\n",""), conf)
+
             if len(confs) > 0:
                 cnt = FastWriteCounter()
                 threads = []
-                for i in range(max_threads):
-                    ColorPrint.print_info("Spawning new thread")
-                    t = threading.Thread(target=spam, args=(confs,cnt))
-                    threads.append(t)
-                    t.start()
+                
+                if not args.parse_only:
+                    for i in range(max_threads):
+                        ColorPrint.print_info("Spawning new thread")
+                        t = threading.Thread(target=spam, args=(confs,cnt))
+                        threads.append(t)
+                        t.start()
             else:
                 ColorPrint.print_fail("Couldn't find any valid targets - aborting ...")
