@@ -23,6 +23,7 @@ import itertools
 import time
 from datetime import datetime
 from threading import Timer
+import sys
 
 HASH_ALGO = hashlib.sha256
 SIG_SIZE = HASH_ALGO().digest_size
@@ -33,6 +34,29 @@ URL_PATHS = {'x86':'ab2g', 'x64':'ab2h'}
 max_threads = 40 # Number of threads for spamming
 tor_session = None
 tor_ip_renew_interval = max_threads * 3  # Renew IP after every X beacons sent
+
+
+class ColorPrint:
+
+    @staticmethod
+    def print_fail(message, end = '\n'):
+        sys.stderr.write('\x1b[1;31m' + message + '\x1b[0m' + end)
+
+    @staticmethod
+    def print_pass(message, end = '\n'):
+        sys.stdout.write('\x1b[1;32m' + message + '\x1b[0m' + end)
+
+    @staticmethod
+    def print_warn(message, end = '\n'):
+        sys.stderr.write('\x1b[1;33m' + message + '\x1b[0m' + end)
+
+    @staticmethod
+    def print_info(message, end = '\n'):
+        sys.stdout.write('\x1b[1;34m' + message + '\x1b[0m' + end)
+
+    @staticmethod
+    def print_bold(message, end = '\n'):
+        sys.stdout.write('\x1b[1;37m' + message + '\x1b[0m' + end)
 
 
 class FastWriteCounter(object):
@@ -61,15 +85,15 @@ def get_beacon_data(url, arch):
     full_url = urljoin(url, URL_PATHS[arch])
     try:
         if tor_session != None:
-            resp = tor_session.get(full_url, timeout=30, headers=EMPTY_UA_HEADERS, verify=False)
+            resp = tor_session.get(full_url, timeout=10, headers=EMPTY_UA_HEADERS, verify=False)
         else:
-            resp = requests.get(full_url, timeout=30, headers=EMPTY_UA_HEADERS, verify=False)
+            resp = requests.get(full_url, timeout=10, headers=EMPTY_UA_HEADERS, verify=False)
     except requests.exceptions.RequestException as e:
-        print('[-] Connection error: ', e)
+        ColorPrint.print_fail('[-] Connection error: ' + str(e))
         return
 
     if resp.status_code != 200:
-        print('[-] Failed with HTTP status code: ', resp.status_code)
+        ColorPrint.print_fail('[-] Failed with HTTP status code: ' +  str(resp.status_code))
         return
 
     buf = resp.content
@@ -81,7 +105,7 @@ def get_beacon_data(url, arch):
 
     offset = buf.find(b'\xff\xff\xff')
     if offset == -1:
-        print('[-] Unexpected buffer received')
+        ColorPrint.print_fail('[-] Unexpected buffer received')
         return
     offset += 3
     key = struct.unpack_from('<I', buf, offset)[0]
@@ -125,17 +149,22 @@ def register_beacon(conf, cnt):
         domain = re.search('Host: (.*)$', conf['HostHeader'], re.I)
         if domain :
             headers['Host'] = domain.group(1).strip()
-    print('[+] Registering new random beacon: comp=%s user=%s url=%s' % (m.comp, m.user, urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1])))
+
+    ColorPrint.print_info('[+] Registering new random beacon: comp=%s user=%s url=%s' % (m.comp, m.user, urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1])))
+
     try:
         if tor_session != None:
             req = tor_session.request('GET', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
         else:
             req = requests.request('GET', urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]), verify=False, params=params, data=body, headers=dict(**headers, **{'User-Agent':''}), timeout=5)
-        print('[Response code: ' + str(req.status_code) + ']')
-        print('[' + str(cnt.value()) + '] Beacon registered')
+        ColorPrint.print_info('[Response code: ' + str(req.status_code) + ']')
 
+        if domain:
+            ColorPrint.print_pass('[' + str(cnt.value()) + '] Beacon registered at ' + urljoin(conf['BeaconType'][0]+'://'+ headers['Host'] +':'+str(conf['Port']), conf['C2Server'].split(',')[1]))
+        else:
+            ColorPrint.print_pass('[' + str(cnt.value()) + '] Beacon registered at ' + urljoin(conf['BeaconType'][0]+'://'+conf['C2Server'].split(',')[0]+':'+str(conf['Port']), conf['C2Server'].split(',')[1]))
     except Exception as e:
-        print('[-] Got exception from server: %s' % e)
+        ColorPrint.print_fail('[-] Got exception from server while trying ' + conf['C2Server'].split(',')[0] + ': %s' % e)
         if tor_session != None:
             spam_utils.renew_tor_ip()
         return
@@ -146,22 +175,40 @@ def register_beacon(conf, cnt):
 
     if tor_session != None:
         if cnt.value() % tor_ip_renew_interval == 0:
-            print("Renewing TOR IP")
+            ColorPrint.print_info("Renewing TOR IP")
             spam_utils.renew_tor_ip()
-            print("New IP: " + spam_utils.get_current_ip())
+            ColorPrint.print_info("New IP: " + spam_utils.get_current_ip())
 
 
 def spam(confs, cnt):
     while (1==1):
         for c in confs:
             register_beacon(c, cnt)
-#            print("Value: " + str(cnt.value()))
+
+
+def print_header():
+    ColorPrint.print_pass("  _____      _           _ _    _____")
+    ColorPrint.print_pass(" / ____|    | |         | | |  / ____|") 
+    ColorPrint.print_pass("| |     ___ | |__   __ _| | |_| (___  _ __   __ _ _ __ ___")
+    ColorPrint.print_pass("| |    / _ \\| '_ \ / _` | | __|\___ \| '_ \\ / _` | '_ ` _ \\")
+    ColorPrint.print_pass("| |___| (_) | |_) | (_| | | |_ ____) | |_) | (_| | | | | | |")
+    ColorPrint.print_pass(" \_____\___/|_.__/ \__,_|_|\__|_____/| .__/ \__,_|_| |_| |_|")
+    ColorPrint.print_pass("       [ Pew, pew, pew ]             | |")
+    ColorPrint.print_pass("       [ @hariomenkel  ]             |_|") 
+    print("\n")
+
+
+def print_config(config):
+    for key in config:
+        ColorPrint.print_info(key + ": " + str(config[key]))
 
 if __name__ == '__main__':
+    print_header()
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-u", "--url", help="Target a single URL")
     group.add_argument("-f", "--file", help="Read targets from text file - One CS server per line")
+    parser.add_argument("--print_config", help="Print the beacon config", default=False, type=lambda x: (str(x).lower() == 'true'))
     parser.add_argument("--use_tor", help="Should tor be used to connect to target?", default=False, type=lambda x: (str(x).lower() == 'true'))
     args = parser.parse_args()
 
@@ -169,26 +216,29 @@ if __name__ == '__main__':
         if spam_utils.test_tor():
             tor_session = spam_utils.get_tor_session()
         else:
-            print("Tor is not working")
+            ColorPrint.print_fail("Tor is not working")
             exit(1)
 
     if args.url:
         confs = []
-        print("[*] Now testing " + args.url)
+        ColorPrint.print_info("[*] Now testing " + args.url)
         x86_beacon_conf = get_beacon_data(args.url, 'x86')
         x64_beacon_conf = get_beacon_data(args.url, 'x64')
         if not x86_beacon_conf and not x64_beacon_conf:
-            print("[-] Failed finding any beacon configuration")
+            ColorPrint.print_fail("[-] Failed finding any beacon configuration")
             exit(1)
 
-        print("[+] Got beacon configuration successfully")
+        ColorPrint.print_pass("[+] Got beacon configuration successfully")
         conf = x86_beacon_conf or x64_beacon_conf
         confs.append(conf)
+        if args.print_config:
+            ColorPrint.print_info("[*] Beacon config for " + line.replace("\n","") + ":")
+            print_config(conf)
 
         cnt = FastWriteCounter()
         threads = []
         for i in range(max_threads):
-            print("Spawning new thread")
+            ColorPrint.print_info("Spawning new thread")
             t = threading.Thread(target=spam, args=(confs,cnt))
             threads.append(t)
             t.start()
@@ -198,30 +248,33 @@ if __name__ == '__main__':
         try:
             f = open(args.file, 'r')
         except OSError:
-            print("Could not open/read file:", fname)
+            ColorPrint.print_fail("Could not open/read file:", fname)
             sys.exit()
 
         with f:
             reader = f.readlines()
             for line in reader:
                 if line[0] != '#':
-                    print("[*] Now testing " + line.replace("\n",''))
+                    ColorPrint.print_info("[*] Now testing " + line.replace("\n",''))
                     x86_beacon_conf = get_beacon_data(line, 'x86')
                     x64_beacon_conf = get_beacon_data(line, 'x64')
                     if not x86_beacon_conf and not x64_beacon_conf:
-                        print("[-] Failed finding any beacon configuration")
+                        ColorPrint.print_fail("[-] Failed finding any beacon configuration")
                     else:
-                        print("[+] Got beacon configuration successfully")
+                        ColorPrint.print_pass("[+] Got beacon configuration successfully")
                         conf = x86_beacon_conf or x64_beacon_conf
                         confs.append(conf)
+                        if args.print_config:
+                            ColorPrint.print_info("[*] Beacon config for " + line.replace("\n","") + ":")
+                            print_config(conf)
 
             if len(confs) > 0:
                 cnt = FastWriteCounter()
                 threads = []
                 for i in range(max_threads):
-                    print("Spawning new thread")
+                    ColorPrint.print_info("Spawning new thread")
                     t = threading.Thread(target=spam, args=(confs,cnt))
                     threads.append(t)
                     t.start()
             else:
-                print("Couldn't find any valid targets - aborting ...")
+                ColorPrint.print_fail("Couldn't find any valid targets - aborting ...")
