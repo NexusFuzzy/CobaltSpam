@@ -26,6 +26,7 @@ from threading import Timer
 import sys
 import urllib3
 import json
+import validators
 
 HASH_ALGO = hashlib.sha256
 SIG_SIZE = HASH_ALGO().digest_size
@@ -36,7 +37,7 @@ URL_PATHS = {'x86':'ab2g', 'x64':'ab2h'}
 max_threads = 40 # Number of threads for spamming
 tor_session = None
 tor_ip_renew_interval = max_threads * 3  # Renew IP after every X beacons sent
-threatfox_api_key = "" # Please add your own API key for threatfox.abuse.ch here
+threatfox_api_key = ""
 
 class ColorPrint:
 
@@ -112,6 +113,10 @@ def query_ThreatFox(beacon_download_url, conf):
         comment += key + ": " + str(conf[key]) + "\n"
 
     try:
+        if not validators.url(url):
+            ColorPrint.print_warn(url  + " is not a valid domain - Will not be posted to ThreatFox!")
+            return
+
         r = requests.post('https://threatfox-api.abuse.ch/api/v1/', json = {'query':'search_ioc', 'search_term':url}).json()
         if r['query_status'] == "no_result":
             ColorPrint.print_pass("Good news! IOC '" + url + "' was not known to ThreatFox! Will post to ThreatFox ...")
