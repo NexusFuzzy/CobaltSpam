@@ -12,7 +12,7 @@ import hashlib
 import random
 import os
 import string
-import M2Crypto
+from M2Crypto import BIO, RSA
 import requests
 import spam_utils
 
@@ -47,26 +47,28 @@ class Metadata(object):
         self.high_integrity = False
         self.aes_source_bytes = aes_source_bytes
         self.junk = os.urandom(14)
-        d = hashlib.sha256(aes_source_bytes).digest()        
+        d = hashlib.sha256(aes_source_bytes).digest()
         self.aes_key = d[0:16]
         self.hmac_key = d[16:]
         self.spawn_to = spawn_to.split('\\')[-1].split(" ")[0]
-    
+
     def rsa_encrypt(self, data):
         """Encrypt given data the way Cobalt's server likes
-        
+
         Args:
             data (bytes): Data to encrypt
-        
+
         Returns:
-            bytes: 
+            bytes:
         """
-        bio = M2Crypto.BIO.MemoryBuffer(PUBLIC_KEY_TEMPLATE.format(base64.b64encode(self.public_key).decode()).encode())
-        pubkey = M2Crypto.RSA.load_pub_key_bio(bio)
+        # Build PEM from raw public key bytes (base64)
+        pem = PUBLIC_KEY_TEMPLATE.format(base64.b64encode(self.public_key).decode()).encode()
+        bio = BIO.MemoryBuffer(pem)
+        pubkey = RSA.load_pub_key_bio(bio)
         # Format is: magic + dataLength + data
         # beef is the magic used by the server
         packed_data = b'\x00\x00\xBE\xEF' + struct.pack('>I', len(data)) + data
-        return pubkey.public_encrypt(packed_data, M2Crypto.RSA.pkcs1_padding)
+        return pubkey.public_encrypt(packed_data, RSA.pkcs1_padding)
 
 
     def pack(self):
@@ -85,7 +87,7 @@ def mask(arg, data):
     key = os.urandom(4)
     data = data.encode('latin-1')
     return key.decode('latin-1') + ''.join(chr(c ^ key[i%4]) for i, c in enumerate(data))
-    
+
 def demask(arg, data):
     key = data[:4].encode('latin-1')
     data = data.encode('latin-1')
@@ -98,31 +100,32 @@ def netbios_decode(name, case):
     except:
         return ''
 
-func_dict_encode = {"append": lambda arg, data: data + arg,
-"prepend": lambda arg, data: arg + data,
-"base64": lambda arg, data: base64.b64encode(data),
-"netbios": lambda arg, data: ''.join([chr((ord(c)>>4) + ord('a')) + chr((ord(c)&0xF) + ord('a')) for c in data]),
-"netbiosu": lambda arg, data: ''.join([chr((ord(c)>>4) + ord('A')) + chr((ord(c)&0xF) + ord('A')) for c in data]),
-"base64": lambda arg, data: base64.b64encode(data.encode('latin-1')).decode('latin-1'),
-"base64url": lambda arg, data: base64.urlsafe_b64encode(data.encode('latin-1')).decode('latin-1').strip('='),
-"mask": mask,
+func_dict_encode = {
+    "append": lambda arg, data: data + arg,
+    "prepend": lambda arg, data: arg + data,
+    # note: ensure input is string when calling these transforms in your workflow
+    "base64": lambda arg, data: base64.b64encode(data.encode('latin-1')).decode('latin-1'),
+    "netbios": lambda arg, data: ''.join([chr((ord(c)>>4) + ord('a')) + chr((ord(c)&0xF) + ord('a')) for c in data]),
+    "netbiosu": lambda arg, data: ''.join([chr((ord(c)>>4) + ord('A')) + chr((ord(c)&0xF) + ord('A')) for c in data]),
+    "base64url": lambda arg, data: base64.urlsafe_b64encode(data.encode('latin-1')).decode('latin-1').strip('='),
+    "mask": mask,
 }
 
-func_dict_decode = {"append": lambda arg, data: data[:-len(arg)],
-"prepend": lambda arg, data: data[len(arg):],
-"base64": lambda arg, data: base64.b64decode(data),
-"netbios": lambda arg, data: netbios_decode(data, 'a'),
-"netbiosu": lambda arg, data: netbios_decode(data, 'A'),
-"base64": lambda arg, data: base64.b64decode(data.encode('latin-1')).decode('latin-1'),
-"base64url": lambda arg, data: base64.urlsafe_b64decode(data.encode('latin-1')).decode('latin-1').strip('='),
-"mask": demask,
+func_dict_decode = {
+    "append": lambda arg, data: data[:-len(arg)],
+    "prepend": lambda arg, data: data[len(arg):],
+    "base64": lambda arg, data: base64.b64decode(data.encode('latin-1')).decode('latin-1'),
+    "netbios": lambda arg, data: netbios_decode(data, 'a'),
+    "netbiosu": lambda arg, data: netbios_decode(data, 'A'),
+    "base64url": lambda arg, data: base64.urlsafe_b64decode(data.encode('latin-1')).decode('latin-1').strip('='),
+    "mask": demask,
 }
 
 
 class Transform(object):
     def __init__(self, trans_dict):
         """An helper class to tranform data according to cobalt's malleable profile
-        
+
         Args:
             trans_dict (dict): A dictionary that came from packedSetting data. It's in the form of:
                                 {'ConstHeaders':[], 'ConstParams': [], 'Metadata': [], 'SessionId': [], 'Output': []}
@@ -131,12 +134,12 @@ class Transform(object):
 
     def encode(self, metadata, output, sessionId):
         """
-        
+
         Args:
             metadata (str): The metadata of a Beacon, usually given from Metadata.pack()
             output (str): If this is for a Beacon's response, then this is the response's data
             sessionId (str): the Beacon's ID
-        
+
         Returns:
             (str, dict, dict): This is to be used in an HTTP request. The tuple is (request_body, request_headers, request_params)
         """
@@ -201,7 +204,7 @@ class Transform(object):
             body (str): The body of an HTTP request
             headers (dict): Headers dict from the HTTP request
             params (dict): Params dict from the HTTP request
-        
+
         Returns:
             (str, str, str): The tuple is (metadata, output, sessionId)
         """
@@ -248,9 +251,3 @@ class Transform(object):
                 sessionId = func_dict_decode[action](arg, sessionId)
 
         return metadata, output, sessionId
-
-
-
-
-
-        
